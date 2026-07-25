@@ -5,6 +5,7 @@ import type { Message } from "@copilotkit/shared";
 import { useCopilotChatInternal } from "@copilotkit/react-core";
 import type { LegacyRenderProps } from "./messages/LegacyRenderMessage";
 import { LegacyRenderMessage } from "./messages/LegacyRenderMessage";
+import { isScrolledToBottom } from "./scroll-utils";
 
 export const Messages = ({
   inProgress,
@@ -154,27 +155,21 @@ function makeInitialMessages(
 export function useScrollToBottom(messages: Message[]) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const isProgrammaticScrollRef = useRef(false);
   const isUserScrollUpRef = useRef(false);
+  const userMessageCount = messages.filter((m) => m.role === "user").length;
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current && messagesEndRef.current) {
-      isProgrammaticScrollRef.current = true;
       messagesContainerRef.current.scrollTop =
         messagesContainerRef.current.scrollHeight;
     }
   };
 
   const handleScroll = () => {
-    if (isProgrammaticScrollRef.current) {
-      isProgrammaticScrollRef.current = false;
-      return;
-    }
-
     if (messagesContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } =
-        messagesContainerRef.current;
-      isUserScrollUpRef.current = scrollTop + clientHeight < scrollHeight;
+      isUserScrollUpRef.current = !isScrolledToBottom(
+        messagesContainerRef.current,
+      );
     }
   };
 
@@ -214,9 +209,26 @@ export function useScrollToBottom(messages: Message[]) {
   }, []);
 
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      isUserScrollUpRef.current = !isScrolledToBottom(container);
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     isUserScrollUpRef.current = false;
     scrollToBottom();
-  }, [messages.filter((m) => m.role === "user").length]);
+  }, [userMessageCount]);
 
   return { messagesEndRef, messagesContainerRef };
 }
